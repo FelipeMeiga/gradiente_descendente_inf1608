@@ -22,7 +22,7 @@ def gradient_func2(x, y):
     return df_dx, df_dy
 
 # Função MIPS
-def mips(f, r, delta):
+def mips(f, r, delta, strategy='recent'):
     s = r - delta
     t = r + delta
     for i in range(50):
@@ -35,16 +35,28 @@ def mips(f, r, delta):
         if abs(f(s) - f(t)) <= 1e-6:
             return (s + t) / 2.0
         
-        if f(a) < f(s):
-            r, s, t = s, t, a
-        else:
-            r = s
-            s = t
-            t = a
+        if strategy == 'recent':
+            if f(a) < f(s):
+                r, s, t = s, t, a
+            else:
+                r = s
+                s = t
+                t = a
+        elif strategy == 'worst':
+            if f(a) < f(s):
+                if f(s) > f(t):
+                    s = a
+                else:
+                    t = a
+            else:
+                if f(r) > f(t):
+                    r = a
+                else:
+                    s = a
     return (s + t) / 2.0
 
 # Método do Gradiente Descendente com IPS
-def gradient_descent_ips(f, grad_f, x0, delta, max_iter, tol=1e-6):
+def gradient_descent_ips(f, grad_f, x0, delta, max_iter, tol=1e-6, strategy='recent'):
     x = x0
     trajectory = [x0]
     prev_f_val = f(*x)
@@ -56,7 +68,7 @@ def gradient_descent_ips(f, grad_f, x0, delta, max_iter, tol=1e-6):
             return f(*x_temp)
         
         # Calcular o passo usando IPS
-        alpha = mips(f_alpha, 0, delta)
+        alpha = mips(f_alpha, 0, delta, strategy=strategy)
         
         x = [xi - alpha * gi for xi, gi in zip(x, grad)]
         
@@ -119,7 +131,7 @@ def plot_trajectory_3d(f, trajectory, title):
     plt.show()
 
 # Teste com visualização usando passos constantes
-x0 = [-1, 2]
+x0 = [-1, -1]
 learning_rate = 0.001  # Ajustar a taxa de aprendizado para um valor menor
 max_iter = 10000
 
@@ -127,9 +139,14 @@ result, trajectory, iterations = gradient_descent_constant_step(func2, gradient_
 print(f"Número de iterações (passos constantes): {iterations}")
 plot_trajectory_3d(func2, trajectory, "Function 2 with Constant Steps")
 
-# Teste com visualização usando IPS
+# Teste com visualização usando IPS e substituição da estimativa mais recente
 delta = 0.1  # Ajustar o delta
 
-result, trajectory, iterations = gradient_descent_ips(func2, gradient_func2, x0, delta, max_iter)
-print(f"Número de iterações (IPS): {iterations}")
-plot_trajectory_3d(func2, trajectory, "Function 2 with IPS")
+result, trajectory, iterations = gradient_descent_ips(func2, gradient_func2, x0, delta, max_iter, strategy='recent')
+print(f"Número de iterações (IPS, estratégia recente): {iterations}")
+plot_trajectory_3d(func2, trajectory, "Function 2 with IPS (Estimativa Mais Recente)")
+
+# Teste com visualização usando IPS e substituição da pior estimativa
+result, trajectory, iterations = gradient_descent_ips(func2, gradient_func2, x0, delta, max_iter, strategy='worst')
+print(f"Número de iterações (IPS, pior estimativa): {iterations}")
+plot_trajectory_3d(func2, trajectory, "Function 2 with IPS (Pior Estimativa)")
