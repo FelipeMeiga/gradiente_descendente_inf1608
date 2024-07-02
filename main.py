@@ -1,152 +1,237 @@
-import math
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
-def func1(x, y):
-    return (x**4) + (y**4) + (2*x**2*y**2) + (6*x*y) - (4*x) - (4*y) + 1
+STEP = 1e-2
+TOL = 5e-2
+MAX_STEPS = 50000
 
-# Gradiente da função
-def gradient_func1(x, y):
-    df_dx = 4*x**3 + 4*x*y**2 + 6*y - 4
-    df_dy = 4*y**3 + 4*y*x**2 + 6*x - 4
-    return df_dx, df_dy
+def f(v):
+    x, y = v
+    return x**4 + y**4 + 2 * x**2 * y**2 + 6 * x * y - 4 * x - 4 * y + 1
 
-# Função a ser minimizada
-def func2(x, y):
-    return 100*(y - x**2)**2 + (x - 1)**2
+def rosenbrock_2d(v):
+    x, y = v
+    return 100 * (y - x**2)**2 + (x - 1)**2
 
-# Gradiente da função
-def gradient_func2(x, y):
-    df_dx = -400*x*(y - x**2) + 2*(x - 1)
-    df_dy = 200*(y - x**2)
-    return df_dx, df_dy
+def rosenbrock_3d(v):
+    x, y, z = v
+    return 100 * (y - x**2)**2 + (x - 1)**2 + 100 * (z - y**2)**2 + (y - 1)**2
 
-# Função MIPS
-def mips(f, r, delta, strategy='recent'):
-    s = r - delta
-    t = r + delta
-    for i in range(50):
-        d = 2 * ((s - r) * (f(t) - f(s)) - (f(s) - f(r)) * (t - s))
-        if abs(d) < 1e-10:
-            a = (r + s + t) / 3.0
+def partial_derivative(f, v, h, i):
+    temp = v[i]
+    v[i] += h
+    f1 = f(v)
+    v[i] = temp - h
+    f2 = f(v)
+    v[i] = temp
+    return (f1 - f2) / (2 * h)
+
+def compute_gradient(f, v, h):
+    n = len(v)
+    gradient = np.array([partial_derivative(f, v.copy(), h, i) for i in range(n)])
+    norm = np.linalg.norm(gradient)
+    if norm > 1:
+        gradient /= norm
+    return gradient
+
+def sub_x_av(a, x, v):
+    return x - a * v
+
+def worst_estimate(fr, fs, ft):
+    return np.argmax([fr, fs, ft])
+
+def mips_mult_v(r, s, t, x, v, f, tol, c):
+    count = 0
+    w = np.zeros_like(x)
+    fa, a = 0, 0
+
+    fr = f(sub_x_av(r, x, v))
+    fs = f(sub_x_av(s, x, v))
+    ft = f(sub_x_av(t, x, v))
+
+    while True:
+        if count > 50:
+            return a
+
+        if count >= 5:
+            criterion = abs(fs - ft)
+            if criterion <= tol:
+                return (s + t) / 2
+
+        d = 2 * ((s - r) * (ft - fs) - (fs - fr) * (t - s))
+
+        if d < 10e-10:
+            a = (r + s + t) / 3
         else:
-            a = (r + s) / 2.0 - ((f(s) - f(r)) * (t - r) * (t - s)) / d
-        
-        if abs(f(s) - f(t)) <= 1e-6:
-            return (s + t) / 2.0
-        
-        if strategy == 'recent':
-            if f(a) < f(s):
-                r, s, t = s, t, a
-            else:
-                r = s
-                s = t
-                t = a
-        elif strategy == 'worst':
-            if f(a) < f(s):
-                if f(s) > f(t):
-                    s = a
-                else:
-                    t = a
-            else:
-                if f(r) > f(t):
-                    r = a
-                else:
-                    s = a
-    return (s + t) / 2.0
+            a = ((r + s) / 2) - ((fs - fr) * (t - r) * (t - s)) / d
 
-# Método do Gradiente Descendente com IPS
-def gradient_descent_ips(f, grad_f, x0, delta, max_iter, tol=1e-6, strategy='recent'):
-    x = x0
-    trajectory = [x0]
-    prev_f_val = f(*x)
-    for i in range(max_iter):
-        grad = grad_f(*x)
-        
-        def f_alpha(alpha):
-            x_temp = [xi - alpha * gi for xi, gi in zip(x, grad)]
-            return f(*x_temp)
-        
-        # Calcular o passo usando IPS
-        alpha = mips(f_alpha, 0, delta, strategy=strategy)
-        
-        x = [xi - alpha * gi for xi, gi in zip(x, grad)]
-        
-        # Verificar convergência
-        current_f_val = f(*x)
-        if abs(current_f_val - prev_f_val) < tol:
-            break
-        prev_f_val = current_f_val
-        
-        # Normalização dos valores
-        norm = np.linalg.norm(x)
-        if norm > 1e10:
-            x = [xi / norm * 1e10 for xi in x]
-        
-        trajectory.append(x)
-    return x, trajectory, i + 1
+        fa = f(sub_x_av(a, x, v))
 
-# Método do Gradiente Descendente com Passos Constantes
-def gradient_descent_constant_step(f, grad_f, x0, learning_rate, max_iter, tol=1e-6):
-    x = x0
-    trajectory = [x0]
-    prev_f_val = f(*x)
-    for i in range(max_iter):
-        grad = grad_f(*x)
-        x = [xi - learning_rate * gi for xi, gi in zip(x, grad)]
-        
-        # Verificar convergência
-        current_f_val = f(*x)
-        if abs(current_f_val - prev_f_val) < tol:
-            break
-        prev_f_val = current_f_val
-        
-        # Normalização dos valores
-        norm = np.linalg.norm(x)
-        if norm > 1e10:
-            x = [xi / norm * 1e10 for xi in x]
-        
-        trajectory.append(x)
-    return x, trajectory, i + 1
+        if c:
+            r, fr = s, fs
+            s, fs = t, ft
+            t, ft = a, fa
+        else:
+            worst = worst_estimate(fr, fs, ft)
+            if worst == 0:
+                r, fr = a, fa
+            elif worst == 1:
+                s, fs = a, fa
+            elif worst == 2:
+                t, ft = a, fa
 
-def plot_trajectory_3d(f, trajectory, title):
-    x_vals = [p[0] for p in trajectory]
-    y_vals = [p[1] for p in trajectory]
-    z_vals = [f(x, y) for x, y in trajectory]
+        count += 1
 
-    X = np.linspace(min(x_vals)-1, max(x_vals)+1, 400)
-    Y = np.linspace(min(y_vals)-1, max(y_vals)+1, 400)
-    X, Y = np.meshgrid(X, Y)
-    Z = f(X, Y)
+def check_convergence(g, tol):
+    return all(abs(g_i) < tol for g_i in g)
 
-    fig = plt.figure(figsize=(12, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.8)
-    ax.plot(x_vals, y_vals, z_vals, 'r.-', label='Gradient Descent Path', markersize=5)
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('f(x, y)')
-    ax.set_title(title)
-    ax.legend()
+def descgrad_ips(n, r, s, t, c, f, v):
+    count = 0
+    grad = compute_gradient(f, v, STEP)
+    history = [v.copy()]
+
+    while not check_convergence(grad, TOL) and count < MAX_STEPS:
+        grad = compute_gradient(f, v, STEP)
+        a = mips_mult_v(r, s, t, v, grad, f, 1e-7, c)
+        v -= a * grad
+        history.append(v.copy())
+        count += 1
+
+    return count, history
+
+def descgrad_constant(n, f, v, a):
+    count = 0
+    grad = compute_gradient(f, v, STEP)
+    history = [v.copy()]
+
+    while not check_convergence(grad, TOL) and count < MAX_STEPS:
+        grad = compute_gradient(f, v, STEP)
+        v -= a * grad
+        history.append(v.copy())
+        count += 1
+
+    return count, history
+
+def plot_2d_function(f, history, title):
+    history = np.array(history)
+    x = np.linspace(-3, 3, 400)
+    y = np.linspace(-3, 3, 400)
+    X, Y = np.meshgrid(x, y)
+    Z = np.array([f([x, y]) for x, y in zip(np.ravel(X), np.ravel(Y))]).reshape(X.shape)
+
+    plt.figure()
+    plt.contour(X, Y, Z, levels=np.logspace(-1, 3, 20), cmap='jet')
+    plt.plot(history[:, 0], history[:, 1], marker='o', color='r')
+    plt.title(title)
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.colorbar()
+    plt.grid(True)
     plt.show()
 
-# Teste com visualização usando passos constantes
-x0 = [-1, -1]
-learning_rate = 0.001  # Ajustar a taxa de aprendizado para um valor menor
-max_iter = 10000
+def plot_3d_function(f, history, title):
+    history = np.array(history)
+    x = np.linspace(-2, 2, 100)
+    y = np.linspace(-2, 2, 100)
+    X, Y = np.meshgrid(x, y)
+    Z = np.array([f([x, y]) for x, y in zip(np.ravel(X), np.ravel(Y))]).reshape(X.shape)
 
-result, trajectory, iterations = gradient_descent_constant_step(func2, gradient_func2, x0, learning_rate, max_iter)
-print(f"Número de iterações (passos constantes): {iterations}")
-plot_trajectory_3d(func2, trajectory, "Function 2 with Constant Steps")
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.8)
+    ax.plot(history[:, 0], history[:, 1], [f(v) for v in history], marker='o', color='r')
+    ax.set_title(title)
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('z')
+    plt.show()
 
-# Teste com visualização usando IPS e substituição da estimativa mais recente
-delta = 0.1  # Ajustar o delta
+def main():
+    d = int(input("Enter the number of dimensions: "))
+    v = np.array([float(input(f"Enter the value for v[{i}]: ")) for i in range(d)])
+    temp = v.copy()
 
-result, trajectory, iterations = gradient_descent_ips(func2, gradient_func2, x0, delta, max_iter, strategy='recent')
-print(f"Número de iterações (IPS, estratégia recente): {iterations}")
-plot_trajectory_3d(func2, trajectory, "Function 2 with IPS (Estimativa Mais Recente)")
+    n = 2
+    if n == d:
+        print("Function f(x,y) = x^4 + y^4 + 6xy - 4x - 4y + 1")
+        print("Evaluating with constant step size:")
+        count, history = descgrad_constant(n, f, v, 0.1)
+        print(f"Number of iterations: {count}")
+        print(v)
+        plot_3d_function(f, history, "Constant Step Size")
+        v = temp.copy()
 
-# Teste com visualização usando IPS e substituição da pior estimativa
-result, trajectory, iterations = gradient_descent_ips(func2, gradient_func2, x0, delta, max_iter, strategy='worst')
-print(f"Número de iterações (IPS, pior estimativa): {iterations}")
-plot_trajectory_3d(func2, trajectory, "Function 2 with IPS (Pior Estimativa)")
+        print("Evaluating with step size defined by MIPS (least recent):")
+        count, history = descgrad_ips(n, -1, 0, 1, 1, f, v)
+        print(f"Number of iterations: {count}")
+        print(v)
+        plot_3d_function(f, history, "MIPS (Least Recent)")
+        v = temp.copy()
+
+        print("Evaluating with step size defined by MIPS (worst estimate):")
+        count, history = descgrad_ips(n, -1, 0, 1, 0, f, v)
+        print(f"Number of iterations: {count}")
+        print(v)
+        plot_3d_function(f, history, "MIPS (Worst Estimate)")
+        v = temp.copy()
+        print()
+
+    else:
+        print(f"This function cannot be tested with these parameters. n must be equal to {n}")
+
+    n = 2
+    if n == d:
+        print("Function Rosenbrock 2D")
+        print("Evaluating with constant step size:")
+        count, history = descgrad_constant(n, rosenbrock_2d, v, 1e-3)
+        print(f"Number of iterations: {count}")
+        print(v)
+        plot_3d_function(rosenbrock_2d, history, "Constant Step Size (Rosenbrock 2D)")
+        v = temp.copy()
+
+        print("Evaluating with step size defined by MIPS (least recent):")
+        count, history = descgrad_ips(n, 0, 0.5, 1, 1, rosenbrock_2d, v)
+        print(f"Number of iterations: {count}")
+        print(v)
+        plot_3d_function(rosenbrock_2d, history, "MIPS (Least Recent, Rosenbrock 2D)")
+        v = temp.copy()
+
+        print("Evaluating with step size defined by MIPS (worst estimate):")
+        count, history = descgrad_ips(n, 0, 0.5, 1, 0, rosenbrock_2d, v)
+        print(f"Number of iterations: {count}")
+        print(v)
+        plot_3d_function(rosenbrock_2d, history, "MIPS (Worst Estimate, Rosenbrock 2D)")
+        v = temp.copy()
+        print()
+
+    else:
+        print(f"This function cannot be tested with these parameters. n must be equal to {n}")
+
+    n = 3
+    if n == d:
+        print("Function Rosenbrock 3D")
+        print("Evaluating with constant step size:")
+        count, history = descgrad_constant(n, rosenbrock_3d, v, 1e-3)
+        print(f"Number of iterations: {count}")
+        print(v)
+        v = temp.copy()
+
+        print("Evaluating with step size defined by MIPS (least recent):")
+        count, history = descgrad_ips(n, 1, 2, 3, 1, rosenbrock_3d, v)
+        print(f"Number of iterations: {count}")
+        print(v)
+        v = temp.copy()
+
+        print("Evaluating with step size defined by MIPS (worst estimate):")
+        count, history = descgrad_ips(n, 1, 2, 3, 0, rosenbrock_3d, v)
+        print(f"Number of iterations: {count}")
+        print(v)
+        v = temp.copy()
+        print()
+
+    else:
+        print(f"This function cannot be tested with these parameters. n must be equal to {n}")
+
+if __name__ == "__main__":
+    main()
